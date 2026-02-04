@@ -27,12 +27,18 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+          cache: 'npm' # 自动缓存 npm 依赖
 
       - name: 安装 Rust 稳定版
         uses: dtolnay/rust-toolchain@stable
         with:
           # macOS 需要额外的目标平台
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust 缓存
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
 
       - name: 安装依赖 (Ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
