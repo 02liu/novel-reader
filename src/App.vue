@@ -76,11 +76,13 @@ function backToBookshelf() {
   box-sizing: border-box;
 }
 
+html,
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background: transparent;
+  overflow: hidden;
 }
 
 #app {
