@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送 v 开头的 tag 时触发，如 v1.0.0
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest' # macOS 构建
+            args: '--target universal-apple-darwin'
+          - platform: 'windows-latest' # Windows 构建
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: 安装 Rust 稳定版
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS 需要额外的目标平台
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: 安装依赖 (Ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: 安装前端依赖
+        run: npm install
+
+      - name: 构建应用
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }} # 使用推送的 tag 名称
+          releaseName: '摸鱼神器 ${{ github.ref_name }}' # Release 标题
+          releaseBody: |
+            ## 更新内容
+            请查看提交历史了解详细更新内容。
+
+            ## 下载说明
+            - Windows 用户：下载 `.msi` 或 `.exe` 文件
+            - macOS 用户：下载 `.dmg` 文件
+
+            ## 安装说明
+            ### Windows
+            双击下载的安装包，按照提示安装即可。
+
+            ### macOS
+            1. 打开下载的 `.dmg` 文件
+            2. 将应用拖入 Applications 文件夹
+            3. 首次打开时，右键点击应用选择"打开"（因为应用未经过 Apple 公证）
+          releaseDraft: false # 是否创建草稿 release
+          prerelease: false # 是否标记为预发布版本
+          args: ${{ matrix.args }}
