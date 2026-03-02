@@ -146,10 +146,12 @@ function hexToRgb(hex) {
 onMounted(() => {
   loadBook();
   loadOpacityState();
+  updateWindowTitle();
   window.addEventListener('settingsChanged', handleSettingsChange);
   window.addEventListener('keydown', handleKeyPress);
   window.addEventListener('keyBindingsChanged', handleKeyBindingsChange);
   window.addEventListener('keyBindingsPanelState', handleKeyBindingsPanelState);
+  window.addEventListener('windowTitleChanged', handleWindowTitleChange);
 });
 
 function loadOpacityState() {
@@ -171,6 +173,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyPress);
   window.removeEventListener('keyBindingsChanged', handleKeyBindingsChange);
   window.removeEventListener('keyBindingsPanelState', handleKeyBindingsPanelState);
+  window.removeEventListener('windowTitleChanged', handleWindowTitleChange);
   saveProgress();
   // 清除隐藏定时器
   if (hideTimer) {
@@ -196,6 +199,19 @@ watch(currentChapterIndex, async () => {
     saveProgress();
   }, 100);
 });
+
+async function updateWindowTitle() {
+  const settings = storage.getSettings();
+  const appWindow = getCurrentWindow();
+  console.log('Reader - 设置窗口标题:', settings.windowTitle);
+  await appWindow.setTitle(settings.windowTitle || '摸鱼神器');
+}
+
+async function handleWindowTitleChange(event) {
+  const appWindow = getCurrentWindow();
+  console.log('Reader - 接收到窗口标题更新事件:', event.detail.title);
+  await appWindow.setTitle(event.detail.title || '摸鱼神器');
+}
 
 async function loadBook() {
   try {

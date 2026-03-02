@@ -158,6 +158,21 @@
         />
       </div>
 
+      <!-- 窗口标题 -->
+      <div class="setting-group">
+        <label class="setting-label">窗口标题</label>
+        <p class="setting-hint">自定义任务栏和任务管理器中显示的窗口名称</p>
+        <input
+          type="text"
+          v-model="settings.windowTitle"
+          @change="updateWindowTitle"
+          @blur="updateWindowTitle"
+          class="text-input"
+          placeholder="请输入窗口标题"
+          maxlength="50"
+        />
+      </div>
+
       <!-- 重置按钮 -->
       <div class="setting-group">
         <button class="reset-btn" @click="resetSettings">
@@ -235,6 +250,15 @@ function selectColor(color) {
 function selectTextColor(color) {
   settings.value.textColor = color;
   updateSettings();
+}
+
+function updateWindowTitle() {
+  console.log('更新窗口标题:', settings.value.windowTitle);
+  storage.saveSettings(settings.value);
+  // 触发窗口标题更新事件
+  window.dispatchEvent(new CustomEvent('windowTitleChanged', {
+    detail: { title: settings.value.windowTitle }
+  }));
 }
 
 function resetSettings() {
@@ -438,6 +462,21 @@ async function clearCache() {
 }
 
 .select:focus {
+  outline: none;
+  border-color: #4CAF50;
+}
+
+.text-input {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.text-input:focus {
   outline: none;
   border-color: #4CAF50;
 }

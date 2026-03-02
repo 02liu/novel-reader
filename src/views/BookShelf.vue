@@ -68,11 +68,14 @@ const previousOpacity = ref(null);
 onMounted(() => {
   loadBooks();
   loadOpacityState();
+  updateWindowTitle();
   window.addEventListener('booksCleared', loadBooks);
+  window.addEventListener('windowTitleChanged', handleWindowTitleChange);
 });
 
 onUnmounted(() => {
   window.removeEventListener('booksCleared', loadBooks);
+  window.removeEventListener('windowTitleChanged', handleWindowTitleChange);
 });
 
 function loadOpacityState() {
@@ -204,6 +207,19 @@ function toggleOpacity() {
   storage.saveOpacityState(isFullOpacity.value, previousOpacity.value);
   storage.saveSettings(settings);
   window.dispatchEvent(new Event('settingsChanged'));
+}
+
+async function updateWindowTitle() {
+  const settings = storage.getSettings();
+  const appWindow = getCurrentWindow();
+  console.log('BookShelf - 设置窗口标题:', settings.windowTitle);
+  await appWindow.setTitle(settings.windowTitle || '摸鱼神器');
+}
+
+async function handleWindowTitleChange(event) {
+  const appWindow = getCurrentWindow();
+  console.log('BookShelf - 接收到窗口标题更新事件:', event.detail.title);
+  await appWindow.setTitle(event.detail.title || '摸鱼神器');
 }
 
 // 窗口控制函数

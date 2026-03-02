@@ -55,6 +55,7 @@ export const DEFAULT_SETTINGS = {
   textColor: '#333333', // 文字颜色
   textOpacity: 100, // 文字透明度
   booksPath: './books', // 默认小说存储路径
+  windowTitle: '摸鱼神器', // 窗口标题
 };
 
 // 默认快捷键配置
