@@ -177,6 +177,27 @@ class StorageManager {
       previousOpacity
     }));
   }
+
+  /**
+   * 获取窗口状态
+   * @returns {Object|null} 窗口状态对象 {x, y, width, height}
+   */
+  getWindowState() {
+    const data = localStorage.getItem(STORAGE_KEYS.WINDOW_STATE);
+    return data ? JSON.parse(data) : null;
+  }
+
+  /**
+   * 保存窗口状态
+   * @param {Object|null} state - 窗口状态对象 {x, y, width, height} 或 null 清除状态
+   */
+  saveWindowState(state) {
+    if (state === null) {
+      localStorage.removeItem(STORAGE_KEYS.WINDOW_STATE);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.WINDOW_STATE, JSON.stringify(state));
+    }
+  }
 }
 
 // 导出单例

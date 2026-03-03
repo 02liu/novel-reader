@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
+import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/api/window';
 import BookShelf from './views/BookShelf.vue';
 import Reader from './views/Reader.vue';
 import { storage } from './utils/storage.js';
@@ -33,15 +34,173 @@ function hexToRgb(hex) {
   } : { r: 0, g: 0, b: 0 };
 }
 
+// 窗口状态管理
+let saveWindowStateTimer = null;
+let unlistenMove = null;
+let unlistenResize = null;
+let unlistenCloseRequested = null;
+
+// 验证窗口位置是否在屏幕内
+function isPositionValid(x, y, width, height) {
+  // 简单验证:确保窗口至少有一部分在屏幕内
+  // 允许窗口部分超出屏幕,但至少要有100px在屏幕内
+  const minVisibleSize = 100;
+
+  // 获取主屏幕尺寸(简化处理,假设主屏幕从0,0开始)
+  const screenWidth = window.screen.width;
+  const screenHeight = window.screen.height;
+
+  // 检查窗口是否完全在屏幕外
+  if (x + width < minVisibleSize || x > screenWidth - minVisibleSize) {
+    return false;
+  }
+  if (y + height < minVisibleSize || y > screenHeight - minVisibleSize) {
+    return false;
+  }
+
+  return true;
+}
+
+async function restoreWindowState() {
+  try {
+    const appWindow = getCurrentWindow();
+    const savedState = storage.getWindowState();
+
+    console.log('尝试恢复窗口状态:', savedState);
+
+    if (savedState) {
+      // 验证窗口位置是否有效
+      if (isPositionValid(savedState.x, savedState.y, savedState.width, savedState.height)) {
+        await appWindow.setPosition(new PhysicalPosition(savedState.x, savedState.y));
+        await appWindow.setSize(new PhysicalSize(savedState.width, savedState.height));
+        console.log('窗口状态已恢复:', savedState);
+      } else {
+        console.log('保存的窗口位置无效,使用默认位置');
+        // 清除无效的窗口状态
+        storage.saveWindowState(null);
+      }
+    } else {
+      console.log('没有保存的窗口状态');
+    }
+  } catch (error) {
+    console.error('恢复窗口状态失败:', error);
+  }
+}
+
+async function saveCurrentWindowState() {
+  try {
+    const appWindow = getCurrentWindow();
+    const position = await appWindow.outerPosition();
+    const size = await appWindow.outerSize();
+
+    const state = {
+      x: position.x,
+      y: position.y,
+      width: size.width,
+      height: size.height
+    };
+
+    storage.saveWindowState(state);
+    console.log('窗口状态已保存:', state);
+  } catch (error) {
+    console.error('保存窗口状态失败:', error);
+  }
+}
+
+// 重置窗口到默认位置和大小
+async function resetWindowPosition() {
+  try {
+    const appWindow = getCurrentWindow();
+
+    // 计算屏幕中心位置
+    const screenWidth = window.screen.width;
+    const screenHeight = window.screen.height;
+    const defaultWidth = 1200;
+    const defaultHeight = 800;
+    const centerX = Math.floor((screenWidth - defaultWidth) / 2);
+    const centerY = Math.floor((screenHeight - defaultHeight) / 2);
+
+    await appWindow.setPosition(new PhysicalPosition(centerX, centerY));
+    await appWindow.setSize(new PhysicalSize(defaultWidth, defaultHeight));
+
+    // 保存新的窗口状态
+    await saveCurrentWindowState();
+
+    console.log('窗口已重置到默认位置');
+  } catch (error) {
+    console.error('重置窗口位置失败:', error);
+  }
+}
+
+function handleWindowStateChange() {
+  if (saveWindowStateTimer) {
+    clearTimeout(saveWindowStateTimer);
+  }
+  saveWindowStateTimer = setTimeout(() => {
+    saveCurrentWindowState();
+  }, 500);
+}
+
+async function setupWindowListeners() {
+  try {
+    const appWindow = getCurrentWindow();
+
+    // 监听窗口移动事件
+    unlistenMove = await appWindow.onMoved(() => {
+      console.log('窗口移动事件触发');
+      handleWindowStateChange();
+    });
+
+    // 监听窗口大小变化事件
+    unlistenResize = await appWindow.onResized(() => {
+      console.log('窗口大小变化事件触发');
+      handleWindowStateChange();
+    });
+
+    // 监听窗口关闭请求事件
+    unlistenCloseRequested = await appWindow.onCloseRequested(async () => {
+      console.log('窗口关闭事件触发,保存窗口状态');
+      await saveCurrentWindowState();
+    });
+
+    console.log('窗口事件监听已设置');
+  } catch (error) {
+    console.error('设置窗口监听失败:', error);
+  }
+}
+
+// 监听快捷键
+function handleGlobalKeyPress(event) {
+  // Ctrl+Shift+R: 重置窗口位置
+  if (event.ctrlKey && event.shiftKey && event.key === 'R') {
+    event.preventDefault();
+    resetWindowPosition();
+  }
+}
+
 onMounted(() => {
   // 监听设置变化
   window.addEventListener('settingsChanged', () => {
     settings.value = storage.getSettings();
   });
+
   // 监听全局样式更新（由 toggleOpacity 触发）
   window.addEventListener('globalStyleUpdate', () => {
     settings.value = storage.getSettings();
   });
+
+  // 监听全局快捷键
+  window.addEventListener('keydown', handleGlobalKeyPress);
+
+  // 延迟初始化窗口状态管理,避免阻塞主流程
+  setTimeout(async () => {
+    try {
+      await restoreWindowState();
+      await setupWindowListeners();
+    } catch (error) {
+      console.error('窗口状态管理初始化失败:', error);
+    }
+  }, 100);
 });
 
 function openReader(bookId) {

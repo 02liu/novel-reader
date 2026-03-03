@@ -4,7 +4,7 @@
       <h3>章节目录</h3>
       <button class="close-btn" @click="$emit('close')">×</button>
     </div>
-    <div class="chapter-list">
+    <div class="chapter-list" ref="chapterListRef">
       <div
         v-for="(chapter, index) in chapters"
         :key="index"
@@ -20,9 +20,10 @@
 </template>
 
 <script setup>
+import { ref, watch, nextTick } from 'vue';
 import { extractChapterNumber } from '../utils/chapterDetector.js';
 
-defineProps({
+const props = defineProps({
   chapters: {
     type: Array,
     required: true
@@ -39,6 +40,8 @@ defineProps({
 
 defineEmits(['select', 'close']);
 
+const chapterListRef = ref(null);
+
 function getDisplayNumber(chapter, index) {
   // 优先使用缓存的章节号，否则动态提取
   if (chapter.chapterNum !== null && chapter.chapterNum !== undefined) {
@@ -51,6 +54,34 @@ function getDisplayNumber(chapter, index) {
   }
   // 无法提取则显示特殊标记
   return '★';
+}
+
+// 监听目录打开状态，打开时滚动到当前章节
+watch(() => props.isOpen, async (newValue) => {
+  if (newValue && chapterListRef.value) {
+    await nextTick();
+    scrollToCurrentChapter();
+  }
+});
+
+function scrollToCurrentChapter() {
+  if (!chapterListRef.value) return;
+
+  const activeItem = chapterListRef.value.querySelector('.chapter-item.active');
+  if (activeItem) {
+    const container = chapterListRef.value;
+    const containerHeight = container.clientHeight;
+    const itemTop = activeItem.offsetTop;
+    const itemHeight = activeItem.clientHeight;
+
+    // 计算滚动位置，使当前章节显示在容器中间
+    const scrollPosition = itemTop - (containerHeight / 2) + (itemHeight / 2);
+
+    container.scrollTo({
+      top: scrollPosition,
+      behavior: 'smooth'
+    });
+  }
 }
 </script>
 

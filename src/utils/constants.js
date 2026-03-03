@@ -94,4 +94,5 @@ export const STORAGE_KEYS = {
   READING_PROGRESS: 'novel_reader_progress',
   KEYBINDINGS: 'novel_reader_keybindings',
   OPACITY_STATE: 'novel_reader_opacity_state',
+  WINDOW_STATE: 'novel_reader_window_state',
 };
