@@ -173,6 +173,69 @@
         />
       </div>
 
+      <!-- TTS 朗读 -->
+      <div class="setting-group tts-setting-group">
+        <div class="setting-section-title">语音朗读（免费系统 TTS）</div>
+        <p class="setting-hint">
+          使用 Windows/WebView2 的 Web Speech API，不需要 API Key。
+        </p>
+
+        <template v-if="ttsSupported">
+          <label class="setting-label">音色</label>
+          <select v-model="settings.ttsVoice" @change="updateSettings" class="select">
+            <option value="">自动选择中文/系统默认语音</option>
+            <option
+              v-for="voice in ttsVoices"
+              :key="voice.voiceURI"
+              :value="voice.voiceURI"
+            >
+              {{ formatVoiceName(voice) }}
+            </option>
+          </select>
+
+          <label class="setting-label tts-sub-label">
+            语速
+            <span class="setting-value">{{ Number(settings.ttsRate).toFixed(1) }}x</span>
+          </label>
+          <input
+            type="range"
+            min="0.5"
+            max="2"
+            step="0.1"
+            v-model.number="settings.ttsRate"
+            @input="updateSettings"
+            class="slider"
+          />
+
+          <label class="setting-label tts-sub-label">
+            音量
+            <span class="setting-value">{{ Math.round(settings.ttsVolume * 100) }}%</span>
+          </label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            v-model.number="settings.ttsVolume"
+            @input="updateSettings"
+            class="slider"
+          />
+
+          <label class="checkbox-row">
+            <input
+              type="checkbox"
+              v-model="settings.ttsAutoNextChapter"
+              @change="updateSettings"
+            />
+            <span>本章读完后自动进入下一章并继续朗读</span>
+          </label>
+        </template>
+
+        <p v-else class="setting-hint danger-hint">
+          当前 WebView2 环境没有提供 Web Speech API。
+        </p>
+      </div>
+
       <!-- 重置按钮 -->
       <div class="setting-group">
         <button class="reset-btn" @click="resetSettings">
@@ -207,6 +270,7 @@
 import { ref, onMounted } from 'vue';
 import { storage } from '../utils/storage.js';
 import { DEFAULT_FONTS, DEFAULT_BG_COLORS, DEFAULT_TEXT_COLORS, DEFAULT_SETTINGS } from '../utils/constants.js';
+import { ttsController } from '../utils/tts.js';
 import KeyBindingsPanel from './KeyBindingsPanel.vue';
 
 defineProps({
@@ -227,9 +291,16 @@ const fonts = DEFAULT_FONTS;
 const bgColors = DEFAULT_BG_COLORS;
 const textColors = DEFAULT_TEXT_COLORS;
 const showKeyBindings = ref(false);
+const ttsSupported = ref(false);
+const ttsVoices = ref([]);
 
-onMounted(() => {
+onMounted(async () => {
   loadSettings();
+  ttsSupported.value = ttsController.isSupported();
+
+  if (ttsSupported.value) {
+    ttsVoices.value = await ttsController.waitForVoices();
+  }
 });
 
 function loadSettings() {
@@ -259,6 +330,11 @@ function updateWindowTitle() {
   window.dispatchEvent(new CustomEvent('windowTitleChanged', {
     detail: { title: settings.value.windowTitle }
   }));
+}
+
+function formatVoiceName(voice) {
+  const localTag = voice.localService ? '本地' : '系统/在线';
+  return `${voice.name} (${voice.lang || 'unknown'} · ${localTag})`;
 }
 
 function resetSettings() {
@@ -412,6 +488,13 @@ async function clearCache() {
   margin-bottom: 12px;
 }
 
+.setting-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+}
+
 .setting-hint {
   font-size: 12px;
   color: #999;
@@ -421,6 +504,30 @@ async function clearCache() {
 .setting-value {
   color: #4CAF50;
   font-weight: 600;
+}
+
+.tts-setting-group {
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.tts-sub-label {
+  margin-top: 18px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #555;
+  cursor: pointer;
+}
+
+.checkbox-row input {
+  margin-top: 3px;
 }
 
 .slider {

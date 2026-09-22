@@ -56,6 +56,10 @@ export const DEFAULT_SETTINGS = {
   textOpacity: 100, // 文字透明度
   booksPath: './books', // 默认小说存储路径
   windowTitle: '摸鱼神器', // 窗口标题
+  ttsVoice: '', // 空值表示自动选择中文/系统默认语音
+  ttsRate: 1, // TTS 语速
+  ttsVolume: 1, // TTS 音量 0~1
+  ttsAutoNextChapter: true, // 当前章节结束后自动进入下一章
 };
 
 // 默认快捷键配置
@@ -65,7 +69,11 @@ export const DEFAULT_KEYBINDINGS = {
   bossKey: 'Escape',
   toggleOpacity: '',
   pageUp: 'PageUp',
-  pageDown: 'PageDown'
+  pageDown: 'PageDown',
+  ttsToggle: 'F9',
+  ttsStop: 'F10',
+  ttsPrevSentence: 'F7',
+  ttsNextSentence: 'F8',
 };
 
 // 快捷键显示名称映射
@@ -84,6 +92,10 @@ export const KEY_DISPLAY_NAMES = {
   'End': 'End',
   'PageUp': 'Page Up',
   'PageDown': 'Page Down',
+  'F7': 'F7',
+  'F8': 'F8',
+  'F9': 'F9',
+  'F10': 'F10',
   '': '未绑定'
 };
 

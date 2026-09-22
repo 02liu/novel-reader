@@ -7,74 +7,22 @@
       </div>
 
       <div class="panel-content">
-        <div class="keybinding-item">
+        <div
+          v-for="item in bindingItems"
+          :key="item.key"
+          class="keybinding-item"
+        >
           <div class="keybinding-info">
-            <h3>上一章</h3>
-            <p class="keybinding-desc">快速跳转到上一章节</p>
+            <h3>{{ item.title }}</h3>
+            <p class="keybinding-desc">{{ item.description }}</p>
           </div>
-          <div class="keybinding-key" @click="startRecording('prevChapter')">
-            <kbd :class="{ recording: recordingKey === 'prevChapter' }">
-              {{ recordingKey === 'prevChapter' ? '按下任意键...' : getKeyDisplayName(keyBindings.prevChapter) }}
-            </kbd>
-          </div>
-        </div>
-
-        <div class="keybinding-item">
-          <div class="keybinding-info">
-            <h3>下一章</h3>
-            <p class="keybinding-desc">快速跳转到下一章节</p>
-          </div>
-          <div class="keybinding-key" @click="startRecording('nextChapter')">
-            <kbd :class="{ recording: recordingKey === 'nextChapter' }">
-              {{ recordingKey === 'nextChapter' ? '按下任意键...' : getKeyDisplayName(keyBindings.nextChapter) }}
-            </kbd>
-          </div>
-        </div>
-
-        <div class="keybinding-item">
-          <div class="keybinding-info">
-            <h3>向上翻页</h3>
-            <p class="keybinding-desc">向上滚动一页内容</p>
-          </div>
-          <div class="keybinding-key" @click="startRecording('pageUp')">
-            <kbd :class="{ recording: recordingKey === 'pageUp' }">
-              {{ recordingKey === 'pageUp' ? '按下任意键...' : getKeyDisplayName(keyBindings.pageUp) }}
-            </kbd>
-          </div>
-        </div>
-
-        <div class="keybinding-item">
-          <div class="keybinding-info">
-            <h3>向下翻页</h3>
-            <p class="keybinding-desc">向下滚动一页内容</p>
-          </div>
-          <div class="keybinding-key" @click="startRecording('pageDown')">
-            <kbd :class="{ recording: recordingKey === 'pageDown' }">
-              {{ recordingKey === 'pageDown' ? '按下任意键...' : getKeyDisplayName(keyBindings.pageDown) }}
-            </kbd>
-          </div>
-        </div>
-
-        <div class="keybinding-item">
-          <div class="keybinding-info">
-            <h3>老板键</h3>
-            <p class="keybinding-desc">一键最小化窗口</p>
-          </div>
-          <div class="keybinding-key" @click="startRecording('bossKey')">
-            <kbd :class="{ recording: recordingKey === 'bossKey' }">
-              {{ recordingKey === 'bossKey' ? '按下任意键...' : getKeyDisplayName(keyBindings.bossKey) }}
-            </kbd>
-          </div>
-        </div>
-
-        <div class="keybinding-item">
-          <div class="keybinding-info">
-            <h3>切换透明度</h3>
-            <p class="keybinding-desc">快速切换背景透明/不透明</p>
-          </div>
-          <div class="keybinding-key" @click="startRecording('toggleOpacity')">
-            <kbd :class="{ recording: recordingKey === 'toggleOpacity' }">
-              {{ recordingKey === 'toggleOpacity' ? '按下任意键...' : getKeyDisplayName(keyBindings.toggleOpacity) }}
+          <div class="keybinding-key" @click="startRecording(item.key)">
+            <kbd :class="{ recording: recordingKey === item.key }">
+              {{
+                recordingKey === item.key
+                  ? '按下任意键...'
+                  : getKeyDisplayName(keyBindings[item.key])
+              }}
             </kbd>
           </div>
         </div>
@@ -106,6 +54,19 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close']);
+
+const bindingItems = [
+  { key: 'prevChapter', title: '上一章', description: '快速跳转到上一章节' },
+  { key: 'nextChapter', title: '下一章', description: '快速跳转到下一章节' },
+  { key: 'pageUp', title: '向上翻页', description: '向上滚动一页内容' },
+  { key: 'pageDown', title: '向下翻页', description: '向下滚动一页内容' },
+  { key: 'bossKey', title: '老板键', description: '一键最小化窗口' },
+  { key: 'toggleOpacity', title: '切换透明度', description: '快速切换背景透明/不透明' },
+  { key: 'ttsPrevSentence', title: 'TTS 上一句', description: '跳到上一句，朗读中会立即继续' },
+  { key: 'ttsNextSentence', title: 'TTS 下一句', description: '跳到下一句，朗读中会立即继续' },
+  { key: 'ttsToggle', title: 'TTS 播放 / 暂停', description: '开始朗读、暂停或继续朗读' },
+  { key: 'ttsStop', title: 'TTS 停止', description: '停止当前章节朗读' },
+];
 
 const keyBindings = ref({ ...DEFAULT_KEYBINDINGS });
 const recordingKey = ref(null);
@@ -247,6 +208,7 @@ function close() {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   padding: 20px;
   background: #f9f9f9;
   border-radius: 8px;
@@ -256,6 +218,10 @@ function close() {
 
 .keybinding-item:hover {
   background: #f0f0f0;
+}
+
+.keybinding-info {
+  min-width: 0;
 }
 
 .keybinding-info h3 {
@@ -275,6 +241,7 @@ function close() {
   display: flex;
   gap: 8px;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 kbd {
@@ -348,4 +315,3 @@ kbd.recording {
   color: #1976D2;
 }
 </style>
-

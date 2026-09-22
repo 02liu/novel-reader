@@ -4,15 +4,60 @@
       <div class="header-left">
         <button class="back-btn" @click="goBack">← 返回书架</button>
       </div>
+
       <div class="drag-region" data-tauri-drag-region>
         <h2 class="book-title">{{ book?.title }}</h2>
       </div>
+
       <div class="header-right">
-        <button class="opacity-toggle-btn" @click="toggleOpacity" :title="isFullOpacity ? '恢复透明度' : '完全不透明'">
+        <div v-if="ttsSupported" class="tts-controls">
+          <button
+            class="tts-btn"
+            :disabled="ttsSentenceCount === 0"
+            @click="ttsPrevSentence"
+            title="上一句（默认 F7）"
+          >
+            ◀句
+          </button>
+          <button
+            class="tts-btn tts-main-btn"
+            :disabled="ttsSentenceCount === 0"
+            @click="toggleTts"
+            :title="ttsButtonLabel"
+          >
+            {{ ttsButtonLabel }}
+          </button>
+          <button
+            class="tts-btn"
+            :disabled="!ttsSpeaking && !ttsPaused"
+            @click="stopTts"
+            title="停止朗读（默认 F10）"
+          >
+            ■
+          </button>
+          <button
+            class="tts-btn"
+            :disabled="ttsSentenceCount === 0"
+            @click="ttsNextSentence"
+            title="下一句（默认 F8）"
+          >
+            句▶
+          </button>
+          <span v-if="ttsSentenceCount > 0" class="tts-progress">
+            {{ Math.min(ttsSentenceIndex + 1, ttsSentenceCount) }}/{{ ttsSentenceCount }}
+          </span>
+        </div>
+
+        <button
+          class="opacity-toggle-btn"
+          @click="toggleOpacity"
+          :title="isFullOpacity ? '恢复透明度' : '完全不透明'"
+        >
           ☀️
         </button>
         <button class="action-btn" @click="toggleChapterNav">目录</button>
         <button class="action-btn" @click="toggleSettings">设置</button>
+
         <div class="window-controls">
           <button class="window-btn minimize-btn" @click="minimizeWindow" title="最小化">−</button>
           <button class="window-btn maximize-btn" @click="toggleMaximize" title="最大化">□</button>
@@ -21,7 +66,12 @@
       </div>
     </div>
 
-    <div class="reader-content" ref="contentRef" @scroll="handleScroll" :class="{ 'show-scrollbar': showScrollbar }">
+    <div
+      class="reader-content"
+      ref="contentRef"
+      @scroll="handleScroll"
+      :class="{ 'show-scrollbar': showScrollbar }"
+    >
       <div v-if="loading" class="loading-state">
         <div class="loading-spinner"></div>
         <p>加载中...</p>
@@ -81,6 +131,7 @@ import ChapterNav from '../components/ChapterNav.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
 import { storage } from '../utils/storage.js';
 import { readFileFromPath } from '../utils/fileParser.js';
+import { ttsController } from '../utils/tts.js';
 
 const props = defineProps({
   bookId: {
@@ -110,6 +161,20 @@ const previousOpacity = ref(null);
 const keyBindings = ref(storage.getKeyBindings());
 const keyBindingsPanelOpen = ref(false);
 const isChangingChapter = ref(false); // 标记是否正在切换章节
+
+// TTS 状态
+const ttsSupported = ref(false);
+const ttsSpeaking = ref(false);
+const ttsPaused = ref(false);
+const ttsSentenceIndex = ref(0);
+const ttsSentenceCount = ref(0);
+let resumeTtsAfterChapterChange = false;
+
+const ttsButtonLabel = computed(() => {
+  if (ttsPaused.value) return '▶继续';
+  if (ttsSpeaking.value) return '⏸暂停';
+  return '▶朗读';
+});
 
 // 阅读器样式
 const readerStyle = computed(() => {
@@ -144,15 +209,47 @@ function hexToRgb(hex) {
 }
 
 onMounted(() => {
+  setupTts();
   loadBook();
   loadOpacityState();
   updateWindowTitle();
+
   window.addEventListener('settingsChanged', handleSettingsChange);
   window.addEventListener('keydown', handleKeyPress);
   window.addEventListener('keyBindingsChanged', handleKeyBindingsChange);
   window.addEventListener('keyBindingsPanelState', handleKeyBindingsPanelState);
   window.addEventListener('windowTitleChanged', handleWindowTitleChange);
 });
+
+function setupTts() {
+  ttsSupported.value = ttsController.isSupported();
+  applyTtsSettings();
+
+  ttsController.setCallbacks({
+    onStateChange: state => {
+      ttsSpeaking.value = state.speaking;
+      ttsPaused.value = state.paused;
+      ttsSentenceIndex.value = state.index;
+      ttsSentenceCount.value = state.total;
+    },
+    onSentenceChange: state => {
+      ttsSentenceIndex.value = state.index;
+      ttsSentenceCount.value = state.total;
+    },
+    onFinished: handleTtsChapterFinished,
+    onError: error => {
+      console.error('TTS 朗读错误:', error);
+    },
+  });
+}
+
+function applyTtsSettings() {
+  ttsController.setOptions({
+    voiceURI: settings.value.ttsVoice || '',
+    rate: settings.value.ttsRate ?? 1,
+    volume: settings.value.ttsVolume ?? 1,
+  });
+}
 
 function loadOpacityState() {
   const state = storage.getOpacityState();
@@ -174,12 +271,16 @@ onUnmounted(() => {
   window.removeEventListener('keyBindingsChanged', handleKeyBindingsChange);
   window.removeEventListener('keyBindingsPanelState', handleKeyBindingsPanelState);
   window.removeEventListener('windowTitleChanged', handleWindowTitleChange);
+
+  ttsController.stop();
+  ttsController.clearCallbacks();
+
   saveProgress();
-  // 清除隐藏定时器
+
   if (hideTimer) {
     clearTimeout(hideTimer);
   }
-  // 清除滚动条定时器
+
   if (scrollbarTimer) {
     clearTimeout(scrollbarTimer);
   }
@@ -187,12 +288,25 @@ onUnmounted(() => {
 
 // 监听章节变化
 watch(currentChapterIndex, async () => {
-  loadChapterContent();
+  const shouldResumeTts = resumeTtsAfterChapterChange;
+  resumeTtsAfterChapterChange = false;
+
+  await loadChapterContent();
   await nextTick();
+
   // 滚动到顶部
   if (contentRef.value) {
     contentRef.value.scrollTop = 0;
   }
+
+  if (
+    shouldResumeTts
+    && settings.value.ttsAutoNextChapter
+    && ttsSentenceCount.value > 0
+  ) {
+    ttsController.play(0);
+  }
+
   // 延迟重置标记并保存进度
   setTimeout(() => {
     isChangingChapter.value = false;
@@ -201,10 +315,10 @@ watch(currentChapterIndex, async () => {
 });
 
 async function updateWindowTitle() {
-  const settings = storage.getSettings();
+  const currentSettings = storage.getSettings();
   const appWindow = getCurrentWindow();
-  console.log('Reader - 设置窗口标题:', settings.windowTitle);
-  await appWindow.setTitle(settings.windowTitle || '摸鱼神器');
+  console.log('Reader - 设置窗口标题:', currentSettings.windowTitle);
+  await appWindow.setTitle(currentSettings.windowTitle || '摸鱼神器');
 }
 
 async function handleWindowTitleChange(event) {
@@ -271,7 +385,41 @@ async function loadChapterContent() {
   const chapterLines = lines.slice(chapterInfo.startLine, chapterInfo.endLine + 1);
   currentChapterContent.value = chapterLines.join('\n').trim();
 
+  applyTtsSettings();
+  ttsSentenceCount.value = ttsController.setText(currentChapterContent.value);
+  ttsSentenceIndex.value = 0;
+
   console.log('加载章节:', chapterInfo.title);
+}
+
+function toggleTts() {
+  if (!ttsSupported.value || ttsSentenceCount.value === 0) return;
+  applyTtsSettings();
+  ttsController.toggle();
+}
+
+function stopTts() {
+  ttsController.stop();
+}
+
+function ttsPrevSentence() {
+  ttsController.previous();
+}
+
+function ttsNextSentence() {
+  ttsController.next();
+}
+
+function handleTtsChapterFinished() {
+  if (!settings.value.ttsAutoNextChapter || !book.value) {
+    return;
+  }
+
+  if (currentChapterIndex.value < book.value.chapterIndex.length - 1) {
+    resumeTtsAfterChapterChange = true;
+    isChangingChapter.value = true;
+    currentChapterIndex.value += 1;
+  }
 }
 
 // 处理快捷键
@@ -289,34 +437,41 @@ function handleKeyPress(event) {
   const keys = keyBindings.value;
 
   if (event.key === keys.prevChapter) {
-    // 上一章
     event.preventDefault();
     prevChapter();
   } else if (event.key === keys.nextChapter) {
-    // 下一章
     event.preventDefault();
     nextChapter();
   } else if (event.key === keys.bossKey) {
-    // 老板键：最小化窗口
     event.preventDefault();
     minimizeWindow();
   } else if (keys.toggleOpacity && event.key === keys.toggleOpacity) {
-    // 切换透明度
     event.preventDefault();
     toggleOpacity();
   } else if (event.key === keys.pageUp) {
-    // 向上翻页
     event.preventDefault();
     pageUp();
   } else if (event.key === keys.pageDown) {
-    // 向下翻页
     event.preventDefault();
     pageDown();
+  } else if (keys.ttsPrevSentence && event.key === keys.ttsPrevSentence) {
+    event.preventDefault();
+    ttsPrevSentence();
+  } else if (keys.ttsNextSentence && event.key === keys.ttsNextSentence) {
+    event.preventDefault();
+    ttsNextSentence();
+  } else if (keys.ttsToggle && event.key === keys.ttsToggle) {
+    event.preventDefault();
+    toggleTts();
+  } else if (keys.ttsStop && event.key === keys.ttsStop) {
+    event.preventDefault();
+    stopTts();
   }
 }
 
 function handleSettingsChange() {
   settings.value = storage.getSettings();
+  applyTtsSettings();
 }
 
 function handleScroll() {
@@ -330,12 +485,10 @@ function handleScroll() {
     // 显示滚动条
     showScrollbar.value = true;
 
-    // 清除之前的定时器
     if (scrollbarTimer) {
       clearTimeout(scrollbarTimer);
     }
 
-    // 0.3秒后隐藏滚动条
     scrollbarTimer = setTimeout(() => {
       showScrollbar.value = false;
       scrollbarTimer = null;
@@ -346,23 +499,19 @@ function handleScroll() {
 // 处理鼠标移动，实现顶部栏自动隐藏
 function handleMouseMove(event) {
   const mouseY = event.clientY;
-  const triggerDistance = 80; // 触发显示的距离（像素）
+  const triggerDistance = 80;
 
   if (mouseY <= triggerDistance) {
-    // 鼠标在顶部区域，显示顶部栏并清除隐藏定时器
     showHeader.value = true;
     if (hideTimer) {
       clearTimeout(hideTimer);
       hideTimer = null;
     }
-  } else {
-    // 鼠标离开顶部区域，如果还没有设置定时器，则设置一个3秒后隐藏的定时器
-    if (!hideTimer) {
-      hideTimer = setTimeout(() => {
-        showHeader.value = false;
-        hideTimer = null;
-      }, 1000);
-    }
+  } else if (!hideTimer) {
+    hideTimer = setTimeout(() => {
+      showHeader.value = false;
+      hideTimer = null;
+    }, 1000);
   }
 }
 
@@ -373,6 +522,7 @@ function saveProgress() {
 
 function prevChapter() {
   if (currentChapterIndex.value > 0) {
+    resumeTtsAfterChapterChange = false;
     isChangingChapter.value = true;
     currentChapterIndex.value--;
   }
@@ -380,6 +530,7 @@ function prevChapter() {
 
 function nextChapter() {
   if (currentChapterIndex.value < book.value.chapterIndex.length - 1) {
+    resumeTtsAfterChapterChange = false;
     isChangingChapter.value = true;
     currentChapterIndex.value++;
   }
@@ -387,9 +538,7 @@ function nextChapter() {
 
 function pageUp() {
   if (contentRef.value) {
-    // 获取可视区域高度
     const viewportHeight = contentRef.value.clientHeight;
-    // 向上滚动一个可视区域的高度（留一点重叠便于阅读连贯）
     const scrollAmount = viewportHeight - 50;
     contentRef.value.scrollTop = Math.max(0, contentRef.value.scrollTop - scrollAmount);
   }
@@ -397,15 +546,14 @@ function pageUp() {
 
 function pageDown() {
   if (contentRef.value) {
-    // 获取可视区域高度
     const viewportHeight = contentRef.value.clientHeight;
-    // 向下滚动一个可视区域的高度（留一点重叠便于阅读连贯）
     const scrollAmount = viewportHeight - 50;
     contentRef.value.scrollTop = contentRef.value.scrollTop + scrollAmount;
   }
 }
 
 function selectChapter(index) {
+  resumeTtsAfterChapterChange = false;
   isChangingChapter.value = true;
   currentChapterIndex.value = index;
   showChapterNav.value = false;
@@ -434,15 +582,13 @@ function toggleOpacity() {
     isFullOpacity.value = true;
   }
 
-  // 保存透明度切换状态
   storage.saveOpacityState(isFullOpacity.value, previousOpacity.value);
-  // 保存设置到存储
   storage.saveSettings(settings.value);
-  // 通知 App.vue 更新全局样式（但不触发本组件的 handleSettingsChange）
   window.dispatchEvent(new CustomEvent('globalStyleUpdate'));
 }
 
 function goBack() {
+  ttsController.stop();
   saveProgress();
   emit('back');
 }
@@ -459,6 +605,7 @@ async function toggleMaximize() {
 }
 
 async function closeWindow() {
+  ttsController.stop();
   const appWindow = getCurrentWindow();
   await appWindow.close();
 }
@@ -508,6 +655,7 @@ function hexToRgba(hex, alpha) {
 
 .drag-region {
   flex: 1;
+  min-width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -537,7 +685,7 @@ function hexToRgba(hex, alpha) {
 }
 
 .book-title {
-  margin: 0;
+  margin: 0 8px;
   font-size: 16px;
   font-weight: 600;
   color: #333;
@@ -547,12 +695,44 @@ function hexToRgba(hex, alpha) {
   pointer-events: none;
 }
 
-.header-actions {
+.tts-controls {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 4px;
 }
 
-/* 窗口控制按钮 */
+.tts-btn {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid rgba(33, 150, 243, 0.35);
+  border-radius: 6px;
+  background: rgba(33, 150, 243, 0.12);
+  color: #1565C0;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tts-btn:hover:not(:disabled) {
+  background: rgba(33, 150, 243, 0.22);
+}
+
+.tts-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.tts-main-btn {
+  min-width: 58px;
+}
+
+.tts-progress {
+  font-size: 11px;
+  color: #666;
+  min-width: 42px;
+  text-align: center;
+}
+
 .window-controls {
   display: flex;
   align-items: center;
@@ -635,8 +815,8 @@ function hexToRgba(hex, alpha) {
   flex: 1;
   overflow-y: scroll;
   padding: 40px;
-  padding-top: 100px; /* 为固定定位的顶部栏留出空间 */
-  padding-right: 48px; /* 为滚动条预留空间 */
+  padding-top: 100px;
+  padding-right: 48px;
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
@@ -758,5 +938,19 @@ function hexToRgba(hex, alpha) {
 .nav-btn:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+@media (max-width: 1050px) {
+  .tts-progress {
+    display: none;
+  }
+
+  .tts-btn {
+    padding: 0 6px;
+  }
+
+  .action-btn {
+    padding: 8px 10px;
+  }
 }
 </style>
