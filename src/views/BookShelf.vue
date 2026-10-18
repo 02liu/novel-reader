@@ -8,10 +8,20 @@
         <button class="opacity-toggle-btn" @click="toggleOpacity" :title="isFullOpacity ? '恢复透明度' : '完全不透明'">
           ☀️
         </button>
-        <button class="import-btn" @click="importBook">
-          + 导入小说
+        <button
+          class="pin-btn"
+          :class="{ active: isAlwaysOnTop }"
+          @click="toggleAlwaysOnTop"
+          :title="isAlwaysOnTop ? '取消窗口置顶' : '窗口置顶'"
+        >
+          📌
         </button>
-        <button class="settings-btn" @click="toggleSettings">设置</button>
+        <button class="import-btn" @click="importBook" title="导入小说">
+          <span class="btn-icon">+</span><span class="btn-label">导入小说</span>
+        </button>
+        <button class="settings-btn" @click="toggleSettings" title="设置">
+          <span class="btn-icon">⚙</span><span class="btn-label">设置</span>
+        </button>
         <div class="window-controls">
           <button class="window-btn minimize-btn" @click="minimizeWindow" title="最小化">−</button>
           <button class="window-btn maximize-btn" @click="toggleMaximize" title="最大化">□</button>
@@ -56,6 +66,7 @@ import SettingsPanel from '../components/SettingsPanel.vue';
 import { storage } from '../utils/storage.js';
 import { openFileDialog } from '../utils/fileParser.js';
 import { detectChapters } from '../utils/chapterDetector.js';
+import { setWindowAlwaysOnTop } from '../utils/windowActions.js';
 
 const emit = defineEmits(['openReader']);
 
@@ -64,6 +75,7 @@ const loading = ref(false);
 const showSettings = ref(false);
 const isFullOpacity = ref(false);
 const previousOpacity = ref(null);
+const isAlwaysOnTop = ref(storage.getSettings().alwaysOnTop);
 
 onMounted(() => {
   loadBooks();
@@ -71,12 +83,31 @@ onMounted(() => {
   updateWindowTitle();
   window.addEventListener('booksCleared', loadBooks);
   window.addEventListener('windowTitleChanged', handleWindowTitleChange);
+  window.addEventListener('settingsChanged', handleSettingsChange);
 });
 
 onUnmounted(() => {
   window.removeEventListener('booksCleared', loadBooks);
   window.removeEventListener('windowTitleChanged', handleWindowTitleChange);
+  window.removeEventListener('settingsChanged', handleSettingsChange);
 });
+
+function handleSettingsChange() {
+  isAlwaysOnTop.value = storage.getSettings().alwaysOnTop;
+}
+
+async function toggleAlwaysOnTop() {
+  const next = !isAlwaysOnTop.value;
+  const success = await setWindowAlwaysOnTop(next);
+
+  if (!success) return;
+
+  isAlwaysOnTop.value = next;
+  const settings = storage.getSettings();
+  settings.alwaysOnTop = next;
+  storage.saveSettings(settings);
+  window.dispatchEvent(new Event('settingsChanged'));
+}
 
 function loadOpacityState() {
   const state = storage.getOpacityState();
@@ -264,6 +295,8 @@ async function closeWindow() {
 
 .drag-region {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   cursor: move;
   user-select: none;
 }
@@ -274,12 +307,24 @@ async function closeWindow() {
   color: #333;
   margin: 0;
   pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+}
+
+.btn-icon {
+  display: none;
+}
+
+.btn-label {
+  white-space: nowrap;
 }
 
 .opacity-toggle-btn {
@@ -305,6 +350,34 @@ async function closeWindow() {
   transform: scale(0.95);
 }
 
+.pin-btn {
+  padding: 12px 14px;
+  background: #FF7043;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-btn:hover {
+  background: #F4511E;
+  transform: scale(1.05);
+}
+
+.pin-btn:active {
+  transform: scale(0.95);
+}
+
+.pin-btn.active {
+  background: #D84315;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+
 .import-btn {
   padding: 12px 24px;
   background: #4CAF50;
@@ -314,6 +387,9 @@ async function closeWindow() {
   font-size: 16px;
   cursor: pointer;
   transition: background 0.3s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .import-btn:hover {
@@ -329,6 +405,9 @@ async function closeWindow() {
   font-size: 16px;
   cursor: pointer;
   transition: background 0.3s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .settings-btn:hover {
@@ -435,5 +514,96 @@ async function closeWindow() {
 .close-btn:hover {
   background: #e81123;
   color: white;
+}
+
+/* 窄窗口：优先保证设置、置顶和窗口控制按钮可见 */
+@media (max-width: 760px) {
+  .header {
+    padding: 8px 16px;
+  }
+
+  .header h1 {
+    font-size: 20px;
+  }
+
+  .header-actions {
+    gap: 8px;
+  }
+
+  .import-btn,
+  .settings-btn {
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .opacity-toggle-btn,
+  .pin-btn {
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+
+  .window-btn {
+    width: 36px;
+    height: 30px;
+  }
+}
+
+@media (max-width: 720px) {
+  .header h1 {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-actions {
+    gap: 6px;
+  }
+
+  .btn-label {
+    display: none;
+  }
+
+  .btn-icon {
+    display: inline;
+  }
+
+  .import-btn,
+  .settings-btn,
+  .opacity-toggle-btn,
+  .pin-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 16px;
+  }
+
+  .window-btn {
+    width: 32px;
+    height: 34px;
+  }
+}
+
+@media (max-width: 360px) {
+  .header {
+    padding: 6px 8px;
+  }
+
+  .header-actions {
+    gap: 4px;
+  }
+
+  .import-btn,
+  .settings-btn,
+  .opacity-toggle-btn,
+  .pin-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .window-btn {
+    width: 30px;
+    height: 30px;
+  }
 }
 </style>

@@ -4,6 +4,7 @@ import { getCurrentWindow, PhysicalPosition, PhysicalSize } from '@tauri-apps/ap
 import BookShelf from './views/BookShelf.vue';
 import Reader from './views/Reader.vue';
 import { storage } from './utils/storage.js';
+import { hideToTray, setWindowAlwaysOnTop } from './utils/windowActions.js';
 
 const currentView = ref('bookshelf');
 const currentBookId = ref(null);
@@ -39,6 +40,8 @@ let saveWindowStateTimer = null;
 let unlistenMove = null;
 let unlistenResize = null;
 let unlistenCloseRequested = null;
+let keyBindingsPanelOpen = false;
+let appliedAlwaysOnTop = null;
 
 // 验证窗口位置是否在屏幕内
 function isPositionValid(x, y, width, height) {
@@ -157,10 +160,12 @@ async function setupWindowListeners() {
       handleWindowStateChange();
     });
 
-    // 监听窗口关闭请求事件
-    unlistenCloseRequested = await appWindow.onCloseRequested(async () => {
-      console.log('窗口关闭事件触发,保存窗口状态');
+    // 监听窗口关闭请求事件：隐藏到托盘，不退出应用
+    unlistenCloseRequested = await appWindow.onCloseRequested(async (event) => {
+      console.log('窗口关闭事件触发,隐藏到托盘');
+      event.preventDefault();
       await saveCurrentWindowState();
+      await appWindow.hide();
     });
 
     console.log('窗口事件监听已设置');
@@ -169,25 +174,74 @@ async function setupWindowListeners() {
   }
 }
 
+// 设置窗口置顶状态，避免重复调用
+async function applyAlwaysOnTop(enabled, force = false) {
+  if (!force && appliedAlwaysOnTop === enabled) {
+    return;
+  }
+
+  const success = await setWindowAlwaysOnTop(enabled);
+  if (success) {
+    appliedAlwaysOnTop = enabled;
+  }
+}
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
+}
+
+function handleKeyBindingsPanelState(event) {
+  keyBindingsPanelOpen = Boolean(event.detail?.isOpen);
+}
+
+async function hideWindowToTray() {
+  await saveCurrentWindowState();
+  await hideToTray();
+}
+
 // 监听快捷键
-function handleGlobalKeyPress(event) {
+async function handleGlobalKeyPress(event) {
   // Ctrl+Shift+R: 重置窗口位置
   if (event.ctrlKey && event.shiftKey && event.key === 'R') {
     event.preventDefault();
     resetWindowPosition();
+    return;
+  }
+
+  // 阅读页的快捷键由 Reader.vue 处理，这里只补书架页的老板键
+  if (currentView.value !== 'bookshelf') {
+    return;
+  }
+
+  // 快捷键录制中或正在输入时，不触发老板键
+  if (keyBindingsPanelOpen || isTypingTarget(event.target)) {
+    return;
+  }
+
+  const keyBindings = storage.getKeyBindings();
+  if (keyBindings.bossKey && event.key === keyBindings.bossKey) {
+    event.preventDefault();
+    if (!event.repeat) {
+      await hideWindowToTray();
+    }
   }
 }
 
 onMounted(() => {
   // 监听设置变化
-  window.addEventListener('settingsChanged', () => {
+  window.addEventListener('settingsChanged', async () => {
     settings.value = storage.getSettings();
+    await applyAlwaysOnTop(settings.value.alwaysOnTop);
   });
 
   // 监听全局样式更新（由 toggleOpacity 触发）
   window.addEventListener('globalStyleUpdate', () => {
     settings.value = storage.getSettings();
   });
+
+  // 监听快捷键面板状态，避免录制时误触老板键
+  window.addEventListener('keyBindingsPanelState', handleKeyBindingsPanelState);
 
   // 监听全局快捷键
   window.addEventListener('keydown', handleGlobalKeyPress);
@@ -197,6 +251,7 @@ onMounted(() => {
     try {
       await restoreWindowState();
       await setupWindowListeners();
+      await applyAlwaysOnTop(storage.getSettings().alwaysOnTop, true);
     } catch (error) {
       console.error('窗口状态管理初始化失败:', error);
     }

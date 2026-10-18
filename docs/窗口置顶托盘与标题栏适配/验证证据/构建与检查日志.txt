@@ -1,0 +1,24 @@
+﻿生成时间：2026-10-18 20:45:34
+
+=== npm run build ===
+
+> novel-reader@0.1.0 build
+> vite build
+
+vite v6.4.1 building for production...
+transforming...
+✓ 38 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.48 kB │ gzip:  0.31 kB
+dist/assets/index-CazOzJer.css   21.35 kB │ gzip:  3.83 kB
+dist/assets/index-w18bN6L_.js     1.61 kB │ gzip:  0.47 kB
+dist/assets/path-C5tEt0mM.js      3.76 kB │ gzip:  0.91 kB
+dist/assets/index-CxSjI2y_.js     6.27 kB │ gzip:  1.62 kB
+dist/assets/index-C1s1saxK.js   116.72 kB │ gzip: 40.82 kB
+✓ built in 627ms
+退出码：0
+
+=== cargo check --manifest-path src-tauri\Cargo.toml ===
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.48s
+退出码：0

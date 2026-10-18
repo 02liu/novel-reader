@@ -2,7 +2,9 @@
   <div class="reader" :style="readerStyle" @mousemove="handleMouseMove">
     <div class="reader-header" :class="{ 'header-hidden': !showHeader }">
       <div class="header-left">
-        <button class="back-btn" @click="goBack">← 返回书架</button>
+        <button class="back-btn" @click="goBack" title="返回书架">
+          <span class="back-icon">←</span><span class="btn-label">返回书架</span>
+        </button>
       </div>
       <div class="drag-region" data-tauri-drag-region>
         <h2 class="book-title">{{ book?.title }}</h2>
@@ -11,8 +13,20 @@
         <button class="opacity-toggle-btn" @click="toggleOpacity" :title="isFullOpacity ? '恢复透明度' : '完全不透明'">
           ☀️
         </button>
-        <button class="action-btn" @click="toggleChapterNav">目录</button>
-        <button class="action-btn" @click="toggleSettings">设置</button>
+        <button
+          class="pin-btn"
+          :class="{ active: isAlwaysOnTop }"
+          @click="toggleAlwaysOnTop"
+          :title="isAlwaysOnTop ? '取消窗口置顶' : '窗口置顶'"
+        >
+          📌
+        </button>
+        <button class="action-btn" @click="toggleChapterNav" title="目录">
+          <span class="btn-icon">☰</span><span class="btn-label">目录</span>
+        </button>
+        <button class="action-btn" @click="toggleSettings" title="设置">
+          <span class="btn-icon">⚙</span><span class="btn-label">设置</span>
+        </button>
         <div class="window-controls">
           <button class="window-btn minimize-btn" @click="minimizeWindow" title="最小化">−</button>
           <button class="window-btn maximize-btn" @click="toggleMaximize" title="最大化">□</button>
@@ -81,6 +95,7 @@ import ChapterNav from '../components/ChapterNav.vue';
 import SettingsPanel from '../components/SettingsPanel.vue';
 import { storage } from '../utils/storage.js';
 import { readFileFromPath } from '../utils/fileParser.js';
+import { hideToTray, setWindowAlwaysOnTop } from '../utils/windowActions.js';
 
 const props = defineProps({
   bookId: {
@@ -107,6 +122,7 @@ const showScrollbar = ref(false); // 控制滚动条显示/隐藏
 let scrollbarTimer = null; // 滚动条隐藏定时器
 const isFullOpacity = ref(false);
 const previousOpacity = ref(null);
+const isAlwaysOnTop = ref(storage.getSettings().alwaysOnTop);
 const keyBindings = ref(storage.getKeyBindings());
 const keyBindingsPanelOpen = ref(false);
 const isChangingChapter = ref(false); // 标记是否正在切换章节
@@ -297,9 +313,9 @@ function handleKeyPress(event) {
     event.preventDefault();
     nextChapter();
   } else if (event.key === keys.bossKey) {
-    // 老板键：最小化窗口
+    // 老板键：隐藏到托盘
     event.preventDefault();
-    minimizeWindow();
+    hideToTray();
   } else if (keys.toggleOpacity && event.key === keys.toggleOpacity) {
     // 切换透明度
     event.preventDefault();
@@ -317,6 +333,7 @@ function handleKeyPress(event) {
 
 function handleSettingsChange() {
   settings.value = storage.getSettings();
+  isAlwaysOnTop.value = settings.value.alwaysOnTop;
 }
 
 function handleScroll() {
@@ -442,6 +459,18 @@ function toggleOpacity() {
   window.dispatchEvent(new CustomEvent('globalStyleUpdate'));
 }
 
+async function toggleAlwaysOnTop() {
+  const next = !isAlwaysOnTop.value;
+  const success = await setWindowAlwaysOnTop(next);
+
+  if (!success) return;
+
+  isAlwaysOnTop.value = next;
+  settings.value.alwaysOnTop = next;
+  storage.saveSettings(settings.value);
+  window.dispatchEvent(new Event('settingsChanged'));
+}
+
 function goBack() {
   saveProgress();
   emit('back');
@@ -508,6 +537,8 @@ function hexToRgba(hex, alpha) {
 
 .drag-region {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -522,6 +553,14 @@ function hexToRgba(hex, alpha) {
   flex: 0 0 auto;
 }
 
+.btn-icon {
+  display: none;
+}
+
+.btn-label {
+  white-space: nowrap;
+}
+
 .back-btn {
   padding: 8px 16px;
   background: #f5f5f5;
@@ -530,6 +569,9 @@ function hexToRgba(hex, alpha) {
   cursor: pointer;
   font-size: 14px;
   transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .back-btn:hover {
@@ -602,10 +644,41 @@ function hexToRgba(hex, alpha) {
   cursor: pointer;
   font-size: 14px;
   transition: background 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .action-btn:hover {
   background: #45a049;
+}
+
+.pin-btn {
+  padding: 8px 10px;
+  background: #FF7043;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 17px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-btn:hover {
+  background: #F4511E;
+  transform: scale(1.05);
+}
+
+.pin-btn:active {
+  transform: scale(0.95);
+}
+
+.pin-btn.active {
+  background: #D84315;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
 }
 
 .opacity-toggle-btn {
@@ -758,5 +831,119 @@ function hexToRgba(hex, alpha) {
 .nav-btn:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* 窄窗口：优先保证设置、目录、置顶和窗口控制按钮可见 */
+@media (max-width: 760px) {
+  .reader-header {
+    padding: 6px 12px;
+  }
+
+  .book-title {
+    font-size: 14px;
+  }
+
+  .header-right {
+    gap: 6px;
+  }
+
+  .back-btn,
+  .action-btn {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .opacity-toggle-btn,
+  .pin-btn {
+    padding: 6px 8px;
+    font-size: 16px;
+  }
+
+  .window-controls {
+    margin-left: 6px;
+  }
+
+  .window-btn {
+    width: 34px;
+    height: 30px;
+  }
+
+  .reader-content {
+    padding-left: 24px;
+    padding-right: 28px;
+  }
+}
+
+@media (max-width: 700px) {
+  .book-title {
+    display: none;
+  }
+}
+
+@media (max-width: 680px) {
+  .header-right {
+    gap: 4px;
+  }
+
+  .btn-label {
+    display: none;
+  }
+
+  .btn-icon {
+    display: inline;
+  }
+
+  .back-btn,
+  .action-btn,
+  .opacity-toggle-btn,
+  .pin-btn {
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    font-size: 16px;
+  }
+
+  .window-controls {
+    margin-left: 4px;
+  }
+
+  .window-btn {
+    width: 32px;
+    height: 34px;
+  }
+
+  .reader-content {
+    padding-top: 70px;
+    padding-left: 16px;
+    padding-right: 20px;
+  }
+}
+
+@media (max-width: 360px) {
+  .reader-header {
+    padding: 6px 8px;
+  }
+
+  .header-right {
+    gap: 3px;
+  }
+
+  .back-btn,
+  .action-btn,
+  .opacity-toggle-btn,
+  .pin-btn {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .window-controls {
+    margin-left: 2px;
+  }
+
+  .window-btn {
+    width: 30px;
+    height: 30px;
+  }
 }
 </style>

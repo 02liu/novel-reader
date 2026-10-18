@@ -56,6 +56,7 @@ export const DEFAULT_SETTINGS = {
   textOpacity: 100, // 文字透明度
   booksPath: './books', // 默认小说存储路径
   windowTitle: '摸鱼神器', // 窗口标题
+  alwaysOnTop: false, // 窗口是否置顶
 };
 
 // 默认快捷键配置
